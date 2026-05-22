@@ -231,6 +231,7 @@ body{
 .streak-flame{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;}
 .streak-flame span{font-size:22px;}
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -331,7 +332,10 @@ body{
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const DAYS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const todayIdx = new Date().getDay();
-
+// ─── GOOGLE DRIVE SYNC CONFIG ───────────────────────────────────────────────
+const CLIENT_ID = 'C467079828766-shlvrr1ejr9ruu7feltvg47dl20u589t.apps.googleusercontent.com'; // O ID que termina em apps.googleusercontent.com
+let accessToken = null; 
+let driveFileId = null; // Guardará o ID do arquivo oculto no Drive
 const LEVELS = [
   { min:0,     name:'Iniciante',      class:'Sem classe',     avatar:'novice',   aura:null,       color:'#7a849e' },
   { min:1000,  name:'Aprendiz',       class:'Espadachim',     avatar:'squire',   aura:null,       color:'#4d9fff' },
@@ -846,29 +850,67 @@ function showHabitModal(habit) {
 }
 
 function openSyncModal() {
+  const isConnected = accessToken !== null;
+  
   document.getElementById('modalContainer').innerHTML = `
   <div class="modal-bg" onclick="handleModalBg(event)">
     <div class="modal">
       <div class="modal-handle"></div>
-      <h3>🔄 Sincronizar dispositivos</h3>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Seu código único. Use-o para exportar e importar seus dados entre dispositivos.</p>
-      <div class="sync-panel">
-        <div style="font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Seu código de sincronização</div>
-        <div class="sync-code-box" id="syncCodeBox" onclick="copySyncCode()" title="Toque para copiar">${state.syncCode}</div>
-        <div style="font-size:11px;color:var(--text3);text-align:center">Toque no código para copiar</div>
+      <h3>🔄 Sincronização em Nuvem</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+        Conecte-se ao Google Drive para salvar e restaurar seu progresso automaticamente. Seus dados ficarão em uma pasta oculta e segura.
+      </p>
+      
+      <div class="sync-panel" style="text-align:center">
+        <div style="font-size:13px; margin-bottom:12px; color:${isConnected ? 'var(--green)' : 'var(--amber)'}; font-weight:bold;">
+          Status: ${isConnected ? '🟢 Conectado ao Drive' : '🟠 Desconectado'}
+        </div>
+        
+        ${!isConnected ? `
+          <button class="btn primary" style="width:100%; justify-content:center" onclick="authenticateGoogle()">
+            Conectar com o Google
+          </button>
+        ` : `
+          <button class="btn" style="width:100%; justify-content:center; margin-bottom:8px" onclick="forceUpload()">
+            📤 Forçar Salvamento Agora
+          </button>
+          <button class="btn" style="width:100%; justify-content:center" onclick="forceDownload()">
+            📥 Baixar Dados da Nuvem
+          </button>
+        `}
       </div>
-      <div style="margin:14px 0 6px;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em">Exportar dados como JSON</div>
-      <button class="btn" style="width:100%;justify-content:center;margin-bottom:10px" onclick="exportData()">📤 Copiar dados completos</button>
-      <div style="margin:0 0 6px;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em">Importar dados</div>
-      <textarea id="importBox" style="width:100%;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:monospace;padding:10px;outline:none;height:70px;resize:none" placeholder="Cole aqui o JSON exportado de outro dispositivo..."></textarea>
+
       <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Fechar</button>
-        <button class="btn primary" onclick="importData()">📥 Importar</button>
+        <button class="btn" onclick="closeModal()" style="width:100%">Fechar</button>
       </div>
     </div>
   </div>`;
 }
-
+function authenticateGoogle() {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/drive.appdata',
+    callback: (response) => {
+      if (response.error !== undefined) {
+        showPop('❌', 'Erro de conexão', 'Não foi possível conectar');
+        return;
+      }
+      // Sucesso! Guardamos o token de acesso
+      accessToken = response.access_token;
+      showPop('✅', 'Conectado!', 'Sincronização ativada com sucesso');
+      
+      // Atualiza a interface do modal para mostrar os botões de ação
+      openSyncModal(); 
+      
+      // Nas próximas etapas, adicionaremos aqui a função para ler o Drive:
+      // checkExistingBackup(); 
+    },
+  });
+  
+  // Abre o pop-up do Google
+  client.requestAccessToken();
+}
+  
 function copySyncCode() {
   navigator.clipboard && navigator.clipboard.writeText(state.syncCode).then(()=>showPop('📋','Código copiado!',''));
 }

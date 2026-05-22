@@ -254,8 +254,8 @@ body{
           <div class="aura-ring" id="auraRing"></div>
         </div>
         <div class="hero-name-wrap">
-          <div class="hero-name" id="heroName">Aventureiro</div>
-          <div class="hero-class" id="heroClass">Iniciante</div>
+          <div class="hero-name" id="heroName" onclick="editHeroName()" style="cursor:pointer;" title="Toque para mudar o nome">Aventureiro</div>
+          <div class="hero-class" id="heroClass" onclick="editHeroClass()" style="cursor:pointer;" title="Toque para mudar a classe">Iniciante</div>
           <div class="hero-lv" id="heroLv">Nível 1 · 0 XP</div>
         </div>
       </div>
@@ -343,7 +343,7 @@ const CLIENT_ID = '467079828766-shlvrr1ejr9ruu7feltvg47dl20u589t.apps.googleuser
 let accessToken = null; 
 let driveFileId = null; // Guardará o ID do arquivo oculto no Drive
 const LEVELS = [
-  { min:0,     name:'Iniciante',      class:'Sem classe',     avatar:'novice',   aura:null,       color:'#7a849e' },
+  { min:0,     name:'Iniciante',      class:'Estudante',     avatar:'novice',   aura:null,       color:'#7a849e' },
   { min:1000,  name:'Aprendiz',       class:'Espadachim',     avatar:'squire',   aura:null,       color:'#4d9fff' },
   { min:3000,  name:'Guerreiro',      class:'Guerreiro',      avatar:'warrior',  aura:null,       color:'#1be898' },
   { min:7000,  name:'Cavaleiro',      class:'Cavaleiro',      avatar:'knight',   aura:'#1be898',  color:'#1be898' },
@@ -394,6 +394,8 @@ const ICONS = ['🧘','💪','📚','💧','🥗','😴','🏃','🎯','🧠','�
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let state = {
+  heroName: 'Aventureiro',
+  customClass: '',
   xp: 0,
   lastResetDate: null,
   allTimePerfectDays: 0,
@@ -639,13 +641,52 @@ function renderHeroAvatar() {
 }
 
 // ─── RENDER HERO CARD ─────────────────────────────────────────────────────────
+function editHeroName() {
+  const currentName = state.heroName || 'Aventureiro';
+  const newName = prompt('Nome do seu herói:', currentName);
+  
+  if (newName !== null && newName.trim() !== '') {
+    state.heroName = newName.trim();
+    save();
+    renderHero();
+    
+    // Se o Google Drive estiver conectado, já salva a mudança na nuvem
+    if (typeof accessToken !== 'undefined' && accessToken) {
+      forceUpload();
+    }
+  }
+}
+
+function editHeroClass() {
+  const lv = getLevel();
+  const defaultClass = LEVELS[lv].class;
+  const currentClass = state.customClass || defaultClass;
+  
+  const newClass = prompt('Digite a sua nova classe (ou deixe em branco para usar a evolução automática):', currentClass);
+  
+  if (newClass !== null) {
+    state.customClass = newClass.trim();
+    save();
+    renderHero();
+    
+    // Atualiza a tela de avatar se ela estiver aberta
+    if (document.getElementById('page-avatar').classList.contains('active')) {
+      renderAvatarPage();
+    }
+    
+    if (typeof accessToken !== 'undefined' && accessToken) {
+      forceUpload();
+    }
+  }
+}
+  
 function renderHero() {
+  document.getElementById('heroName').innerHTML = `${state.heroName || 'Aventureiro'} <span style="font-size:12px; opacity:0.5">✏️</span>`;
   const lv = getLevel();
   const { cur, nxt } = getLevelRange(lv);
   const pct = Math.min(Math.round(((state.xp - cur) / (nxt - cur)) * 100), 100);
   const lvData = LEVELS[lv];
-  document.getElementById('heroClass').textContent = lvData.class;
-  document.getElementById('heroLv').textContent = `Nível ${lv+1} · ${state.xp.toLocaleString('pt-BR')} XP`;
+document.getElementById('heroClass').innerHTML = `${state.customClass || lvData.class} <span style="font-size:10px; opacity:0.5">✏️</span>`;  document.getElementById('heroLv').textContent = `Nível ${lv+1} · ${state.xp.toLocaleString('pt-BR')} XP`;
   document.getElementById('xpLabel').textContent = `${state.xp.toLocaleString('pt-BR')} XP`;
   document.getElementById('xpNext').textContent = lv < LEVELS.length-1
     ? `${(nxt-state.xp).toLocaleString('pt-BR')} XP para evoluir`
@@ -780,6 +821,11 @@ function toggleHabit(id) {
     if (h.history) h.history = h.history.filter(d => d !== todayStr);
   }
   save(); renderAll();
+
+  // NOVO: Se o Google estiver conectado, envia para a nuvem silenciosamente em segundo plano
+  if (accessToken) {
+    forceUpload();
+  }
 }
 
 function addXP(amount) { state.xp = (state.xp||0) + amount; }
@@ -898,24 +944,46 @@ function authenticateGoogle() {
     scope: 'https://www.googleapis.com/auth/drive.appdata',
     callback: (response) => {
       if (response.error !== undefined) {
-        showPop('❌', 'Erro de conexão', 'Não foi possível conectar');
+        showPop('❌', 'Erro', 'Não foi possível conectar');
         return;
       }
-      // Sucesso! Guardamos o token de acesso
+      // Salva o token na memória RAM do app
       accessToken = response.access_token;
-      showPop('✅', 'Conectado!', 'Sincronização ativada com sucesso');
       
-      // Atualiza a interface do modal para mostrar os botões de ação
+      // Salva o token no armazenamento do celular com a data de validade (1 hora)
+      const expiryTime = new Date().getTime() + (3500 * 1000); // 3500 segundos (quase 1 hora)
+      localStorage.setItem('hq_gdrive_token', accessToken);
+      localStorage.setItem('hq_gdrive_expiry', expiryTime.toString());
+      
+      showPop('✅', 'Conectado!', 'Sincronização ativada');
       openSyncModal(); 
-      
-      // Nas próximas etapas, adicionaremos aqui a função para ler o Drive:
-      // checkExistingBackup(); 
     },
   });
   
-  // Abre o pop-up do Google
   client.requestAccessToken();
 }
+
+function checkGoogleSession() {
+  const savedToken = localStorage.getItem('hq_gdrive_token');
+  const expiry = localStorage.getItem('hq_gdrive_expiry');
+  
+  if (savedToken && expiry) {
+    const now = new Date().getTime();
+    if (now < parseInt(expiry)) {
+      // O token ainda é válido! Reconecta silenciosamente.
+      accessToken = savedToken;
+      console.log("Sessão do Google restaurada automaticamente.");
+    } else {
+      // O token expirou. Limpa a memória.
+      localStorage.removeItem('hq_gdrive_token');
+      localStorage.removeItem('hq_gdrive_expiry');
+      accessToken = null;
+    }
+  }
+}
+
+// Executa a checagem no momento em que o aplicativo é carregado
+checkGoogleSession();
   
 function copySyncCode() {
   navigator.clipboard && navigator.clipboard.writeText(state.syncCode).then(()=>showPop('📋','Código copiado!',''));
@@ -1138,7 +1206,7 @@ function renderAvatarPage() {
       <div style="border-radius:50%;overflow:hidden;${auraStyle}">${bigAvatar}</div>
     </div>
     <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:${lvData.color}">${lvData.name}</div>
-    <div style="font-size:13px;color:var(--text2);margin-top:4px">${lvData.class} · Nível ${lv+1}</div>
+    `<div style="font-size:13px;color:var(--text2);margin-top:4px">${state.customClass || lvData.class} · Nível ${lv+1}</div>`
     <div style="font-size:12px;color:var(--text3);margin-top:3px">${state.xp.toLocaleString('pt-BR')} XP total</div>
     <div style="width:100%;margin-top:14px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:5px">

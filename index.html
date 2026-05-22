@@ -686,7 +686,9 @@ function renderHero() {
   const { cur, nxt } = getLevelRange(lv);
   const pct = Math.min(Math.round(((state.xp - cur) / (nxt - cur)) * 100), 100);
   const lvData = LEVELS[lv];
-document.getElementById('heroClass').innerHTML = `${state.customClass || lvData.class} <span style="font-size:10px; opacity:0.5">✏️</span>`;  document.getElementById('heroLv').textContent = `Nível ${lv+1} · ${state.xp.toLocaleString('pt-BR')} XP`;
+  
+  document.getElementById('heroClass').innerHTML = `${state.customClass || lvData.class} <span style="font-size:10px; opacity:0.5">✏️</span>`;  
+  document.getElementById('heroLv').textContent = `Nível ${lv+1} · ${state.xp.toLocaleString('pt-BR')} XP`;
   document.getElementById('xpLabel').textContent = `${state.xp.toLocaleString('pt-BR')} XP`;
   document.getElementById('xpNext').textContent = lv < LEVELS.length-1
     ? `${(nxt-state.xp).toLocaleString('pt-BR')} XP para evoluir`
@@ -938,6 +940,87 @@ function openSyncModal() {
     </div>
   </div>`;
 }
+
+// ─── FUNÇÕES DE LEITURA E ESCRITA NO GOOGLE DRIVE ─────────────────────────────
+async function findDriveFile() {
+  try {
+    const response = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name="habit-quest-data.json"', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await response.json();
+    if (data.files && data.files.length > 0) {
+      driveFileId = data.files[0].id;
+      return driveFileId;
+    }
+    return null;
+  } catch (e) {
+    console.error("Erro ao buscar arquivo no Drive", e);
+    return null;
+  }
+}
+
+async function forceDownload() {
+  if (!accessToken) return;
+  showPop('⏳', 'Buscando dados...', 'Conectando ao Drive');
+  try {
+    const fileId = await findDriveFile();
+    if (!fileId) {
+      showPop('ℹ️', 'Nenhum backup', 'Não há dados salvos na nuvem ainda.');
+      return;
+    }
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const cloudData = await response.json();
+    if (cloudData && cloudData.habits) {
+      state = cloudData;
+      save(); 
+      renderAll();
+      closeModal();
+      setTimeout(() => showPop('📥', 'Dados restaurados!', 'Sincronização concluída com sucesso.'), 500);
+    }
+  } catch (error) {
+    showPop('❌', 'Erro', 'Falha ao baixar dados do Drive.');
+  }
+}
+
+async function forceUpload() {
+  if (!accessToken) return;
+  showPop('⏳', 'Salvando...', 'Enviando para a nuvem');
+  try {
+    const fileId = await findDriveFile();
+    const metadata = { name: 'habit-quest-data.json', parents: ['appDataFolder'] };
+    const fileContent = JSON.stringify(state);
+    
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([fileContent], { type: 'application/json' }));
+
+    let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    let method = 'POST';
+
+    if (fileId) {
+      url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`;
+      method = 'PATCH'; 
+    }
+
+    const response = await fetch(url, {
+      method: method,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form
+    });
+
+    if (response.ok) {
+      closeModal();
+      setTimeout(() => showPop('📤', 'Salvo na nuvem!', 'Backup atualizado com sucesso.'), 500);
+    } else {
+      throw new Error('Falha na resposta do servidor');
+    }
+  } catch (error) {
+    showPop('❌', 'Erro', 'Não foi possível salvar na nuvem.');
+  }
+}  
+   
 function authenticateGoogle() {
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
@@ -1206,7 +1289,7 @@ function renderAvatarPage() {
       <div style="border-radius:50%;overflow:hidden;${auraStyle}">${bigAvatar}</div>
     </div>
     <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:${lvData.color}">${lvData.name}</div>
-    `<div style="font-size:13px;color:var(--text2);margin-top:4px">${state.customClass || lvData.class} · Nível ${lv+1}</div>`
+    <div style="font-size:13px;color:var(--text2);margin-top:4px">${state.customClass || lvData.class} · Nível ${lv+1}</div>
     <div style="font-size:12px;color:var(--text3);margin-top:3px">${state.xp.toLocaleString('pt-BR')} XP total</div>
     <div style="width:100%;margin-top:14px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:5px">

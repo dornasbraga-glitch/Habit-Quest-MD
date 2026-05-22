@@ -416,7 +416,8 @@ checkDailyReset();
 // ─── GOOGLE DRIVE FUNCTIONS ───────────────────────────────────────────────────
 async function findDriveFile() {
   try {
-    const response = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name="habit-quest-data.json"', {
+    // Adicionado "trashed=false" para evitar arquivos que possam estar na lixeira
+    const response = await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name="habit-quest-data.json" and trashed=false', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await response.json();
@@ -432,11 +433,11 @@ async function findDriveFile() {
 
 async function forceDownload() {
   if (!accessToken) return;
-  showPop('⏳', 'Buscando dados...', 'Conectando ao Drive');
+  showPop('⏳', 'Buscando...', 'Conectando ao Drive');
   try {
     const fileId = await findDriveFile();
     if (!fileId) {
-      showPop('ℹ️', 'Nenhum backup', 'Não há dados na nuvem.');
+      showPop('ℹ️', 'Vazio', 'Não há dados na nuvem.');
       return;
     }
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
@@ -448,7 +449,7 @@ async function forceDownload() {
       save(); 
       renderAll();
       closeModal();
-      setTimeout(() => showPop('📥', 'Dados restaurados!', 'Sucesso.'), 500);
+      setTimeout(() => showPop('📥', 'Restaurado!', 'Dados baixados com sucesso.'), 500);
     }
   } catch (error) {
     showPop('❌', 'Erro', 'Falha ao baixar dados.');
@@ -457,25 +458,52 @@ async function forceDownload() {
 
 async function forceUpload() {
   if (!accessToken) return;
+  showPop('⏳', 'Salvando...', 'Enviando para a nuvem');
+  
   try {
     const fileId = await findDriveFile();
-    const metadata = { name: 'habit-quest-data.json', parents: ['appDataFolder'] };
     const fileContent = JSON.stringify(state);
-    
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', new Blob([fileContent], { type: 'application/json' }));
-
-    let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-    let method = 'POST';
 
     if (fileId) {
-      url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`;
-      method = 'PATCH'; 
-    }
+      // NOVA LÓGICA: Se o arquivo já existe, atualiza apenas o conteúdo de texto diretamente. É muito mais rápido e imune a falhas.
+      const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: fileContent
+      });
 
-    await fetch(url, { method: method, headers: { Authorization: `Bearer ${accessToken}` }, body: form });
-  } catch (error) {}
+      if (response.ok) {
+        closeModal();
+        setTimeout(() => showPop('📤', 'Nuvem Atualizada!', 'Seu progresso foi salvo.'), 500);
+      } else {
+        throw new Error('Falha no update');
+      }
+    } else {
+      // Se não existir, cria o arquivo pela primeira vez
+      const metadata = { name: 'habit-quest-data.json', parents: ['appDataFolder'] };
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', new Blob([fileContent], { type: 'application/json' }));
+
+      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form
+      });
+
+      if (response.ok) {
+        closeModal();
+        setTimeout(() => showPop('📤', 'Criado!', 'Primeiro backup realizado.'), 500);
+      } else {
+        throw new Error('Falha na criação');
+      }
+    }
+  } catch (error) {
+    showPop('❌', 'Erro', 'Não foi possível sincronizar.');
+  }
 }
 
 function authenticateGoogle() {

@@ -1,8 +1,3 @@
-Aqui está o código mestre completo, com todas as funções de calendário, nuvem, interface corrigida e o novo sistema de retroatividade perfeitamente integrados.
-
-Basta copiar tudo o que está no bloco abaixo, colar no seu arquivo `index.html` substituindo o conteúdo anterior e salvar no GitHub.
-
-```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -305,6 +300,13 @@ body{
       <div class="avatar-page-hero" id="avatarPageHero"></div>
       <div class="sec-title">Linha de evolução</div>
       <div class="lvl-timeline" id="lvlTimeline"></div>
+      
+      <div style="margin-top: 30px; text-align: center; padding-bottom: 10px;">
+        <button class="btn danger" onclick="resetProgress()" style="width: 100%; justify-content: center; border-color: rgba(255, 90, 90, 0.3);">
+          ☠️ Reiniciar Jornada (Zerar Progresso)
+        </button>
+        <div style="font-size: 10px; color: var(--text3); margin-top: 8px;">Cuidado: Esta ação apagará seu XP e conquistas permanentemente.</div>
+      </div>
     </div>
   </div>
 
@@ -1277,6 +1279,36 @@ function renderAvatarPage() {
   }).join('');
 }
 
+// ─── RESET PROGRESS ───────────────────────────────────────────────────────────
+function resetProgress() {
+  if (!confirm('⚠️ ATENÇÃO: Tem certeza que deseja apagar todo o seu XP, Nível e Conquistas? Esta ação NÃO pode ser desfeita!')) return;
+
+  state.xp = 0;
+  state.allTimePerfectDays = 0;
+  state.earnedMilestones = {};
+  state.earnedCombos = {};
+  state.weekPerfectStreak = 0;
+  state.lastWeekAllDone = false;
+  state.lastPerfectDay = null;
+  state.perfectDaysStreak = 0;
+
+  state.habits.forEach(h => {
+    h.doneToday = false;
+    h.streak = 0;
+    h.weekDone = [false,false,false,false,false,false,false];
+    h.totalDays = 0;
+    h.history = [];
+  });
+
+  save();
+  renderAll();
+  showPop('☠️', 'Jornada Reiniciada', 'Seu progresso voltou a zero.');
+  
+  if (accessToken) forceUpload();
+  
+  setPage('home');
+}
+
 // ─── NAV / PAGES ──────────────────────────────────────────────────────────────
 function setPage(name) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1306,5 +1338,3 @@ renderAll();
 </script>
 </body>
 </html>
-
-```

@@ -27,7 +27,7 @@
   --gold:#ffd700; --gold2:#b8860b;
   --radius:16px; --radius-sm:10px; --radius-xs:7px;
   --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
-  --nav-h:64px;
+  --nav-h:50px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;}
@@ -47,7 +47,8 @@ body{
 /* NAV */
 .bottom-nav{
   position:fixed;bottom:0;left:0;right:0;
-  height:calc(var(--nav-h) + var(--safe-bottom));
+  min-height: var(--nav-h);
+  padding-bottom: var(--safe-bottom);
   background:rgba(10,12,18,0.95);
   border-top:0.5px solid var(--border2);
   backdrop-filter:blur(20px);

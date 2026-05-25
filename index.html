@@ -408,13 +408,10 @@ function checkDailyReset() {
   if (state.lastResetDate !== todayStr) {
     let isNewWeek = false;
     
-    // Verifica se a semana virou
     if (state.lastResetDate) {
       const lastDate = new Date(state.lastResetDate);
-      // Arredondamento para evitar bugs de fuso horário
       const daysDiff = Math.round((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
       
-      // É uma nova semana se passaram 7 dias OU se o número do dia de hoje (ex: Seg=1) for menor que o de ontem (ex: Dom=0 -> bug. Na verdade Dom=0, Sáb=6. Então se hoje é Dom(0) e o último foi Sáb(6), 0 < 6.
       if (daysDiff >= 7 || today.getDay() < lastDate.getDay()) {
         isNewWeek = true;
       }
@@ -422,7 +419,6 @@ function checkDailyReset() {
 
     state.habits.forEach(h => { 
       h.doneToday = false; 
-      // Limpa os fantamas da semana passada
       if (isNewWeek) {
         h.weekDone = [false,false,false,false,false,false,false];
       }
@@ -483,7 +479,6 @@ async function forceUpload() {
     const fileContent = JSON.stringify(state);
 
     if (fileId) {
-      // Método seguro via PATCH (Atualiza direto o texto do arquivo, evitando conflitos)
       const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: 'PATCH',
         headers: { 
@@ -773,7 +768,7 @@ function renderHabits() {
       let cls='';
       if(h.weekDone[i]) cls+=' done';
       if(i===todayIdx) cls+=' today';
-      return `<div class="dot${cls}">${h.weekDone[i]?'✓':d.charAt(0)}</div>`;
+      return `<div class="dot${cls}" onclick="toggleRetro(${h.id}, ${i})" style="cursor:pointer" title="Marcar/Desmarcar retroativamente">${h.weekDone[i]?'✓':d.charAt(0)}</div>`;
     }).join('');
     return `<div class="habit-card ${h.doneToday?'done':''}">
       <div class="h-top">
@@ -833,19 +828,21 @@ function toggleHabit(id) {
   if (!h) return;
   const prevLevel = getLevel();
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   if (!h.doneToday) {
     h.doneToday = true;
     h.weekDone[todayIdx] = true;
-    h.streak += 1;
     h.totalDays += 1;
-    const todayStr = new Date().toISOString().split('T')[0];
     if (!h.history) h.history = [];
     if (!h.history.includes(todayStr)) h.history.push(todayStr);
+    
+    h.streak = calculateStreak(h.history);
     addXP(XP_HABIT);
 
     MILESTONES.forEach(m => {
       const key = `${h.id}_${m.id}`;
-      if (h.totalDays === m.days && !state.earnedMilestones[key]) {
+      if (h.totalDays >= m.days && !state.earnedMilestones[key]) {
         state.earnedMilestones[key] = true;
         addXP(m.xp);
         setTimeout(() => showPop(m.special?'🏆':m.icon, `Conquista desbloqueada!`, `${h.name}: ${m.label} · +${m.xp} XP`, m.special?'gold':''), 1000);
@@ -863,16 +860,86 @@ function toggleHabit(id) {
   } else {
     h.doneToday = false;
     h.weekDone[todayIdx] = false;
-    h.streak = Math.max(0, h.streak-1);
     h.totalDays = Math.max(0, h.totalDays-1);
-    state.xp = Math.max(0, state.xp - XP_HABIT);
-    const todayStr = new Date().toISOString().split('T')[0];
     if (h.history) h.history = h.history.filter(d => d !== todayStr);
+    
+    h.streak = calculateStreak(h.history);
+    state.xp = Math.max(0, state.xp - XP_HABIT);
   }
   save(); 
   renderAll();
   
   if (accessToken) forceUpload();
+}
+
+function toggleRetro(id, targetDayIdx) {
+  checkDailyReset(); 
+  const todayIdx = new Date().getDay();
+  
+  if (targetDayIdx === todayIdx) {
+    toggleHabit(id); 
+    return;
+  }
+  if (targetDayIdx > todayIdx) {
+    showPop('⏳', 'Aguarde', 'Não é possível marcar dias no futuro.');
+    return;
+  }
+
+  const h = state.habits.find(x => x.id === id);
+  if (!h) return;
+
+  const diff = todayIdx - targetDayIdx;
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() - diff);
+  const targetDateStr = targetDate.toISOString().split('T')[0];
+
+  const isCurrentlyDone = h.weekDone[targetDayIdx];
+
+  if (!isCurrentlyDone) {
+    h.weekDone[targetDayIdx] = true;
+    h.totalDays += 1;
+    if (!h.history) h.history = [];
+    if (!h.history.includes(targetDateStr)) h.history.push(targetDateStr);
+    addXP(XP_HABIT);
+    showPop('⏪', 'Retroativo', 'Hábito passado adicionado!');
+  } else {
+    h.weekDone[targetDayIdx] = false;
+    h.totalDays = Math.max(0, h.totalDays - 1);
+    if (h.history) h.history = h.history.filter(d => d !== targetDateStr);
+    state.xp = Math.max(0, state.xp - XP_HABIT);
+    showPop('⏪', 'Corrigido', 'Marcação passada desfeita.');
+  }
+
+  h.streak = calculateStreak(h.history);
+  
+  checkCombos();
+  save(); 
+  renderAll();
+  if (accessToken) forceUpload();
+}
+
+function calculateStreak(historyArray) {
+  if (!historyArray || historyArray.length === 0) return 0;
+  let streak = 0;
+  let checkDate = new Date();
+  let todayStr = checkDate.toISOString().split('T')[0];
+  
+  if (historyArray.includes(todayStr)) {
+    streak++;
+  }
+  
+  checkDate.setDate(checkDate.getDate() - 1); 
+  
+  while (true) {
+    let checkStr = checkDate.toISOString().split('T')[0];
+    if (historyArray.includes(checkStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
 }
 
 function addXP(amount) { state.xp = (state.xp||0) + amount; }

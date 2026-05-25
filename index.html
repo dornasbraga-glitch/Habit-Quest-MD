@@ -45,10 +45,18 @@ body{
   -webkit-overflow-scrolling:touch;
 }
 /* NAV */
-.bottom-nav{
-  position:fixed;bottom:0;left:0;right:0;
-  min-height: var(--nav-h);
-  padding-bottom: var(--safe-bottom);
+.bottom-nav {
+  position: fixed;
+  bottom: 0; 
+  left: 0; 
+  right: 0;
+  /* 1. Removemos o height fixo e deixamos automático */
+  height: auto; 
+  /* 2. Definimos o espaçamento interno (10px em cima, e 10px + margem do iPhone embaixo) */
+  padding-top: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  /* 3. Mudamos para center para o ícone não ficar "colado" no topo */
+  align-items: center;
   background:rgba(10,12,18,0.95);
   border-top:0.5px solid var(--border2);
   backdrop-filter:blur(20px);
